@@ -6,10 +6,11 @@ pdf417Hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.PDF_417])
 
 const A = "/assets"
 
-// Paste the deployed Google Apps Script Web App URL here (see
-// scratchpad/baggage-damage-apps-script.gs). Left blank, the app falls back
-// to the original demo data so the flow still works before you deploy it.
-const SHEET_API_URL = ""
+// Deployed Google Apps Script Web App URL (see apps-script/Code.gs). Left
+// blank, the app falls back to the original demo data so the flow still
+// works before the backend is deployed.
+const SHEET_API_URL =
+  "https://script.google.com/macros/s/AKfycbyGkgj56ggKlnlhj6N4CdX137ovmGeLCtatn62Rh5Nyfq48aqkVdM36Wt6vaZc6DQb_/exec"
 
 type Screen = "home" | "manual" | "details" | "upload" | "analysing" | "analysis-error" | "flagged" | "minor" | "offer" | "accepted" | "receipt" | "transfer" | "success"
 
