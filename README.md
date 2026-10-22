@@ -1,4 +1,4 @@
-# Baggage Damage Claim App
+# Baggage Damage Claim
 
 An Etihad Airways-branded web app that lets a traveler report damaged checked baggage, upload evidence photos, get an AI damage/authenticity assessment, and receive compensation — entirely self-serve, with no human agent in the loop for the common case.
 
