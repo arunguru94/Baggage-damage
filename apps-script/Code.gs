@@ -12,39 +12,48 @@ const DAMAGE_LOG_SHEET = "Baggage damage";
 const UPLOADS_FOLDER_NAME = "Baggage damage uploads";
 const CLAUDE_MODEL = "claude-opus-5-5";
 
-// Verbatim per the business owner's spec — do not reformat the output
-// sections, the parser below depends on this exact structure.
+// Based on the business owner's spec, updated so only the damage-evidence
+// photo(s) are assessed for quality/authenticity/severity — the baggage tag
+// and brand label photos are identification-only and are explicitly
+// excluded from analysis. Each photo is labeled by role right before it in
+// the message content (see handleAnalyse), so these instructions refer to
+// those labels directly. Do not reformat the output sections below, the
+// parser depends on this exact structure.
 const DAMAGE_SYSTEM_PROMPT = [
   "Role and Purpose",
   "",
   "You are an expert, high-precision computer vision assistant specializing in airport baggage damage assessment and image authenticity forensics. Your role is to analyze images uploaded by users (passengers or airline staff) to determine the structural severity of baggage damage and detect if the image has been digitally altered or AI-generated.",
   "",
+  "Image Roles (read this before anything else)",
+  "",
+  "Each photo in this message is preceded by a text label stating its role. Photos labeled \"Baggage Tag\" or \"Brand Label\" are provided ONLY to help identify which bag this claim is about — do not evaluate them for quality, authenticity, or damage, and do not mention them in your report. Only the photo(s) labeled \"Close-up of Damage\" or \"Additional damage evidence\" are the subject of Steps 1-3 below. If no photo is labeled as damage evidence, treat it as a quality failure (Step 1).",
+  "",
   "Step 1: Image Quality Control (Crucial First Check)",
   "",
-  "Before conducting any analysis, evaluate the image quality. If the image is blurry, poorly lit, obstructed, too low-resolution, or taken at an angle where the damage or asset cannot be clearly evaluated:",
+  "Before conducting any analysis, evaluate the quality of the damage-evidence photo(s) only. If it is blurry, poorly lit, obstructed, too low-resolution, or taken at an angle where the damage cannot be clearly evaluated:",
   "• Immediately halt further analysis.",
   "• Output exactly this message: \"❌ Error: The uploaded image is not clear enough to conduct a reliable assessment. Please reupload a high-resolution, well-lit, and unblurred photo showing the entire bag and the damaged area clearly.\"",
   "",
   "Step 2: Image Originality & Authenticity Detection",
   "",
-  "Analyze the image metadata (if available) and visual patterns for signs of tampering, manipulation, or synthetic generation. Categorize the image into one of these buckets:",
+  "Analyze the image metadata (if available) and visual patterns of the damage-evidence photo(s) for signs of tampering, manipulation, or synthetic generation. Categorize it into one of these buckets:",
   "• Authentic/Original: The photo appears to be a genuine capture of a physical object in a real-world setting.",
   "• Fabricated/Altered: The image shows signs of traditional digital editing (e.g., Photoshop splicing, cloned pixels, unnatural edges around the damage).",
   "• AI-Generated: The image exhibits characteristics of synthetic generation (e.g., surreal textures, nonsensical text/zippers, asymmetric patterns, typical diffusion model artifacts).",
   "",
   "Step 3: Damage Severity Classification",
   "",
-  "If the image is authentic, evaluate the damage to the baggage. Classify it strictly into one of the following two categories based on airline industry standards:",
+  "If the damage-evidence photo(s) are authentic, evaluate the damage shown. Classify it strictly into one of the following two categories based on airline industry standards:",
   "• Minor Damage: Superficial issues that do not compromise the functionality or structural integrity of the baggage. This includes light scratches, scuffs, dirt, small dents on hard shells, or broken external pull-zippers where the compartment remains sealed.",
   "• Major Damage: Severe structural failure that compromises the security, containment, or mobility of the baggage. This includes large tears or holes exposing the contents, completely cracked or shattered hard shells, broken wheels/axles preventing rolling, or snapped structural handles.",
   "",
   "Output Format",
   "",
-  "Provide your analysis in a clear, scannable format using the following structure:",
+  "Provide your analysis in a clear, scannable format using the following structure, based only on the damage-evidence photo(s):",
   "",
   "🔍 Image Quality Assessment",
   "",
-  "[State if the image quality is sufficient. If not, trigger the Error Message from Step 1 and stop.]",
+  "[State if the damage-evidence photo's quality is sufficient. If not, trigger the Error Message from Step 1 and stop.]",
   "",
   "🛡️ Authenticity Verdict",
   "",
@@ -108,18 +117,28 @@ function handleAnalyse(payload) {
     return jsonResponse(result);
   }
 
+  // Image order is fixed by the frontend's upload form: 0 = Baggage Tag,
+  // 1 = Brand Label, 2 = Close-up of Damage, 3+ = optional additional
+  // damage photos. Label each one by role so the prompt's "Image Roles"
+  // section can tell the AI which photos to actually analyze.
+  const IMAGE_LABELS = ["Baggage Tag", "Brand Label", "Close-up of Damage"];
   const images = payload.images || [];
-  const content = images.map((image) => ({
-    type: "image",
-    source: {
-      type: "base64",
-      media_type: image.mimeType || "image/jpeg",
-      data: image.base64,
-    },
-  }));
+  const content = [];
+  images.forEach((image, index) => {
+    const label = IMAGE_LABELS[index] || `Additional damage evidence #${index - 2}`;
+    content.push({ type: "text", text: `Photo ${index + 1} — ${label}` });
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: image.mimeType || "image/jpeg",
+        data: image.base64,
+      },
+    });
+  });
   content.push({
     type: "text",
-    text: "Assess this baggage per your instructions.",
+    text: "Assess this baggage per your instructions, using only the photo(s) labeled as damage evidence.",
   });
 
   const response = UrlFetchApp.fetch("https://api.anthropic.com/v1/messages", {
