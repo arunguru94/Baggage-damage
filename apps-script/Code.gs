@@ -193,38 +193,47 @@ function handleAnalyse(payload) {
 
   if (!text) {
     const result = { error: "AI returned no text content" };
-    logDamageAssessment(payload, result, JSON.stringify(body));
+    logDamageAssessment(payload, result, "");
     return jsonResponse(result);
   }
 
-  const result = parseAssessment(text);
-  logDamageAssessment(payload, result, text);
+  // The prompt requires the model to return ONLY a JSON object (see the
+  // OUTPUT section of DAMAGE_SYSTEM_PROMPT), so this is a direct JSON.parse
+  // rather than regex extraction. The raw JSON is never shown to anyone —
+  // mapAssessment() turns it into the simple shape the frontend branches
+  // on, and formatReportAsText() turns it into a plain-text report for the
+  // "Full AI Report" sheet column, readable without unpacking JSON by hand.
+  let data;
+  try {
+    data = parseJsonResponse(text);
+  } catch (err) {
+    const result = { error: "Could not parse the AI's JSON response." };
+    logDamageAssessment(payload, result, text);
+    return jsonResponse(result);
+  }
+
+  const result = mapAssessment(data);
+  logDamageAssessment(payload, result, formatReportAsText(data));
   return jsonResponse(result);
 }
 
-// The new prompt requires the model to return ONLY a JSON object (see the
-// OUTPUT section of DAMAGE_SYSTEM_PROMPT) instead of the old free-text
-// report, so this is a direct JSON.parse rather than regex extraction.
+function parseJsonResponse(text) {
+  const cleaned = text
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/, "")
+    .replace(/```\s*$/, "");
+  return JSON.parse(cleaned);
+}
+
 // Maps the model's richer {damage, authenticity, recommended_action, ...}
 // shape onto the simple {status | flagged | error} shape the frontend
 // branches on:
 //   recommended_action "process" + damage major/minor -> status
 //   recommended_action "request_more_evidence"         -> error (retry)
 //   anything else (escalate_to_human, hold, or an               -> flagged
-//   unparseable/uncertain result)                                  (manual review)
-function parseAssessment(text) {
-  let data;
-  try {
-    const cleaned = text
-      .trim()
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/, "")
-      .replace(/```\s*$/, "");
-    data = JSON.parse(cleaned);
-  } catch (err) {
-    return { error: "Could not parse the AI's JSON response." };
-  }
-
+//   "uncertain" damage classification)                              (manual review)
+function mapAssessment(data) {
   const damage = data.damage || {};
   const authenticity = data.authenticity || {};
   const action = data.recommended_action;
@@ -248,9 +257,6 @@ function parseAssessment(text) {
     };
   }
 
-  // escalate_to_human, hold, an "uncertain" damage classification, or any
-  // other combination the rules above didn't match — route to manual
-  // review rather than guessing.
   return {
     flagged: true,
     damageConfidence: damage.confidence || "",
@@ -258,6 +264,58 @@ function parseAssessment(text) {
     confidence: authenticity.confidence || "",
     summary: summary,
   };
+}
+
+// Turns the AI's JSON response into a readable plain-text report for the
+// "Full AI Report" sheet column — the raw JSON itself is never logged.
+function formatReportAsText(data) {
+  const damage = data.damage || {};
+  const authenticity = data.authenticity || {};
+  const lines = [];
+
+  lines.push("DAMAGE ASSESSMENT");
+  lines.push("Classification: " + (damage.classification || "n/a"));
+  lines.push("Confidence: " + (damage.confidence || "n/a"));
+  if (damage.reasoning) lines.push("Reasoning: " + damage.reasoning);
+  (damage.damaged_parts || []).forEach((part) => {
+    lines.push(
+      "  - " + (part.part || "Unspecified part") + ": " + (part.damage_type || "") +
+      (part.severity ? " (severity: " + part.severity + ")" : "")
+    );
+  });
+  if ((damage.possible_hidden_damage || []).length) {
+    lines.push("Possible hidden damage: " + damage.possible_hidden_damage.join("; "));
+  }
+
+  lines.push("");
+  lines.push("AUTHENTICITY CHECK");
+  lines.push("Rating: " + (authenticity.rating || "n/a"));
+  lines.push("Confidence: " + (authenticity.confidence || "n/a"));
+  (authenticity.anomalies || []).forEach((anomaly) => {
+    lines.push(
+      "  - [" + (anomaly.category || "") + "] " + (anomaly.location || "") +
+      (anomaly.description ? ": " + anomaly.description : "")
+    );
+  });
+  if ((authenticity.supporting_signs || []).length) {
+    lines.push("Supporting signs: " + authenticity.supporting_signs.join("; "));
+  }
+  if ((authenticity.limitations || []).length) {
+    lines.push("Limitations: " + authenticity.limitations.join("; "));
+  }
+
+  lines.push("");
+  if ((data.additional_photos_needed || []).length) {
+    lines.push("Additional photos needed: " + data.additional_photos_needed.join("; "));
+  }
+  if ((data.verification_steps || []).length) {
+    lines.push("Verification steps: " + data.verification_steps.join("; "));
+  }
+  lines.push("Recommended action: " + (data.recommended_action || "n/a"));
+  lines.push("");
+  lines.push("Summary: " + (data.summary || ""));
+
+  return lines.join("\n");
 }
 
 function logDamageAssessment(payload, result, rawText) {
