@@ -131,7 +131,11 @@ function handleAnalyse(payload) {
     },
     payload: JSON.stringify({
       model: CLAUDE_MODEL,
-      max_tokens: 500,
+      // Opus 5.5 spends some of its budget on internal reasoning before the
+      // visible report; 500 was too low and the whole call was getting cut
+      // off mid-thinking (stop_reason "max_tokens") with zero text ever
+      // produced. Leave real headroom for both.
+      max_tokens: 4096,
       system: DAMAGE_SYSTEM_PROMPT,
       messages: [{ role: "user", content: content }],
     }),
