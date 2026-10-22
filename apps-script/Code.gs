@@ -10,7 +10,7 @@ const TRAVELERS_SHEET = "Recent travelers details";
 const SUBMISSIONS_SHEET = "Submissions";
 const DAMAGE_LOG_SHEET = "Baggage damage";
 const UPLOADS_FOLDER_NAME = "Baggage damage uploads";
-const CLAUDE_MODEL = "claude-sonnet-5-5";
+const CLAUDE_MODEL = "claude-opus-5-5";
 
 // Verbatim per the business owner's spec — do not reformat the output
 // sections, the parser below depends on this exact structure.
