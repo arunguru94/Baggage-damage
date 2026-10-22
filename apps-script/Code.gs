@@ -63,7 +63,7 @@ const DAMAGE_SYSTEM_PROMPT = [
   "- Do not give repair costs unless asked.",
   "",
   "## OUTPUT",
-  "Return ONLY valid JSON, no text before or after. Fill each object's fields IN THE ORDER THEY APPEAR below: list the visible evidence first, write your reasoning from that evidence, and only then commit to the classification/rating that follows from it. Never decide the verdict first and justify it afterward.",
+  "Return ONLY valid JSON, no text before or after. List the fields inside each JSON object in the exact order shown below: write the visible evidence first, derive your reasoning from it, and only then commit to the classification or rating that follows. Do not decide the verdict first and justify it afterward.",
   "{",
   "  \"damage\": {",
   "    \"damaged_parts\": [{\"part\": \"\", \"damage_type\": \"\", \"severity\": \"low | medium | high\"}],",
