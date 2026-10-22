@@ -186,14 +186,15 @@ async function submitClaim(options: {
   })
 }
 
-// Standard offer is a flat $50 per bag; if rejected and a repair receipt is
-// uploaded, the final settlement is a flat $100 per bag. Only the payout
-// speed differs between Etihad Money (instant) and bank transfer (30 days).
+// Initial offer: $100 per bag via Etihad Money (instant), $50 per bag via
+// bank transfer (up to 30 days). If rejected and a repair receipt is
+// uploaded, the final settlement rises to $150 via Etihad Money or $100 via
+// bank transfer.
 const compensationDetails = {
   money: {
     label: "Etihad Money",
     totalLabel: "Etihad Money (instant credit)",
-    amount: "$50.00",
+    amount: "$100.00",
   },
   bank: {
     label: "Bank transfer",
@@ -210,7 +211,7 @@ const postReceiptDetails = {
   money: {
     label: "Etihad Money",
     totalLabel: "Etihad Money",
-    amount: "$100.00",
+    amount: "$150.00",
   },
   bank: {
     label: "Bank transfer",
