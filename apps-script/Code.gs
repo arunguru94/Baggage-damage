@@ -12,60 +12,78 @@ const DAMAGE_LOG_SHEET = "Baggage damage";
 const UPLOADS_FOLDER_NAME = "Baggage damage uploads";
 const CLAUDE_MODEL = "claude-opus-5-5";
 
-// Based on the business owner's spec, updated so only the damage-evidence
-// photo(s) are assessed for quality/authenticity/severity — the baggage tag
-// and brand label photos are identification-only and are explicitly
-// excluded from analysis. Each photo is labeled by role right before it in
-// the message content (see handleAnalyse), so these instructions refer to
-// those labels directly. Do not reformat the output sections below, the
-// parser depends on this exact structure.
+// Business owner's spec, adapted for this app: the bracketed asset-type
+// placeholder is filled in as checked airline baggage, and one scoping
+// paragraph is added up front so the AI only assesses the photo(s) labeled
+// as damage evidence — not the baggage tag / brand label identification
+// photos. Each photo is labeled by role right before it in the message
+// content (see handleAnalyse). The model is required to return ONLY JSON;
+// parseAssessment() below parses that JSON directly (no regex extraction).
 const DAMAGE_SYSTEM_PROMPT = [
-  "Role and Purpose",
+  "You are an expert damage assessor and image-authenticity analyst. Analyze the attached image(s) of checked airline baggage (a suitcase or bag). Optional context from the user: none.",
   "",
-  "You are an expert, high-precision computer vision assistant specializing in airport baggage damage assessment and image authenticity forensics. Your role is to analyze images uploaded by users (passengers or airline staff) to determine the structural severity of baggage damage and detect if the image has been digitally altered or AI-generated.",
+  "Each photo below is preceded by a text label stating its role. Photos labeled \"Baggage Tag\" or \"Brand Label\" are provided ONLY to help identify which bag this claim is about — do not assess them for damage or authenticity, and do not mention them in your output. Only the photo(s) labeled \"Close-up of Damage\" or \"Additional damage evidence\" are the subject of the damage assessment and authenticity check below. If no photo is labeled as damage evidence, classify damage as \"uncertain\" and explain why in reasoning.",
   "",
-  "Image Roles (read this before anything else)",
+  "Do two independent analyses, then combine them into one final recommendation.",
   "",
-  "Each photo in this message is preceded by a text label stating its role. Photos labeled \"Baggage Tag\" or \"Brand Label\" are provided ONLY to help identify which bag this claim is about — do not evaluate them for quality, authenticity, or damage, and do not mention them in your report. Only the photo(s) labeled \"Close-up of Damage\" or \"Additional damage evidence\" are the subject of Steps 1-3 below. If no photo is labeled as damage evidence, treat it as a quality failure (Step 1).",
+  "## 1. DAMAGE ASSESSMENT",
+  "First describe only what is visible: damaged parts, damage type (scratch, dent, crack, shattered glass, deformation, broken or missing part, rust, fire or water damage), size, and location.",
   "",
-  "Step 1: Image Quality Control (Crucial First Check)",
+  "Classify as:",
+  "- MAJOR if any of these is present: structural or frame deformation; crumpled panels or misaligned gaps; damage to safety-critical parts (airbags, windshield, wheels, suspension, brakes, lights); fluid leaks; exposed or broken mechanical or electrical parts; damage covering roughly a third of a panel or more; fire, flood, or severe impact; missing or detached parts.",
+  "- MINOR only if ALL hold: surface-level damage (light scratches, scuffs, small dents, paint chips); no structural deformation; no broken safety-critical parts; small area; repairable by simple work.",
+  "- UNCERTAIN if the image is blurry, dark, distant, or hides the damaged area, or if internal damage is likely.",
+  "When torn between minor and major, choose the more cautious class and explain why.",
   "",
-  "Before conducting any analysis, evaluate the quality of the damage-evidence photo(s) only. If it is blurry, poorly lit, obstructed, too low-resolution, or taken at an angle where the damage cannot be clearly evaluated:",
-  "• Immediately halt further analysis.",
-  "• Output exactly this message: \"❌ Error: The uploaded image is not clear enough to conduct a reliable assessment. Please reupload a high-resolution, well-lit, and unblurred photo showing the entire bag and the damaged area clearly.\"",
+  "## 2. AUTHENTICITY CHECK",
+  "Look for signs the image is AI-generated or edited. Report only anomalies you can actually see, and say where in the image.",
+  "- Lighting and shadows: wrong light direction, shadows that do not match, missing contact shadows",
+  "- Reflections: glass or shiny paint that does not reflect the surroundings logically",
+  "- Edges and blending: halos, sharpness or blur mismatches around the damage, pasted-looking patches, cloned textures",
+  "- Physical plausibility: dent or crumple shape that does not match the impact, unnatural debris, painted-on rust or water marks",
+  "- Text and details: warped plates, logos, badges, signs, or dashboard text; wrong counts of spokes, bolts, or fingers; asymmetry where symmetry is expected",
+  "- Texture and noise: waxy or overly smooth surfaces, uniform noise, noise that differs between regions",
+  "- Scene consistency: weather, time of day, perspective, or scale that conflict",
+  "- Compression: different compression or pixel size in different regions",
+  "- Context: does the damage match the stated story, location, and date?",
   "",
-  "Step 2: Image Originality & Authenticity Detection",
+  "Rate authenticity as: likely_genuine, suspicious, likely_manipulated_or_ai, or cannot_determine (low resolution, screenshots, heavy compression, or too little detail).",
   "",
-  "Analyze the image metadata (if available) and visual patterns of the damage-evidence photo(s) for signs of tampering, manipulation, or synthetic generation. Categorize it into one of these buckets:",
-  "• Authentic/Original: The photo appears to be a genuine capture of a physical object in a real-world setting.",
-  "• Fabricated/Altered: The image shows signs of traditional digital editing (e.g., Photoshop splicing, cloned pixels, unnatural edges around the damage).",
-  "• AI-Generated: The image exhibits characteristics of synthetic generation (e.g., surreal textures, nonsensical text/zippers, asymmetric patterns, typical diffusion model artifacts).",
+  "## 3. COMBINE",
+  "- Judge severity and authenticity separately. A genuine photo can show major damage, and a manipulated photo can show minor damage.",
+  "- If authenticity is suspicious or worse, state that the damage classification is conditional on the image being real.",
+  "- Choose a recommended action: process, request_more_evidence, escalate_to_human, or hold.",
   "",
-  "Step 3: Damage Severity Classification",
+  "## RULES",
+  "- Never claim certainty. Visual analysis cannot prove an image is real or fake; give indicators and risk levels, not verdicts.",
+  "- Do not accuse the submitter of fraud. Flag the image for review and cite the evidence.",
+  "- Real photos can look odd (low light, lens distortion, compression) and AI images can look perfect, so weigh evidence rather than impressions.",
+  "- Do not invent damage or anomalies. If you see none, say so.",
+  "- If more photos would help, name the exact angles (close-up, wide shot, underside, interior, plate or VIN).",
+  "- Do not give repair costs unless asked.",
   "",
-  "If the damage-evidence photo(s) are authentic, evaluate the damage shown. Classify it strictly into one of the following two categories based on airline industry standards:",
-  "• Minor Damage: Superficial issues that do not compromise the functionality or structural integrity of the baggage. This includes light scratches, scuffs, dirt, small dents on hard shells, or broken external pull-zippers where the compartment remains sealed.",
-  "• Major Damage: Severe structural failure that compromises the security, containment, or mobility of the baggage. This includes large tears or holes exposing the contents, completely cracked or shattered hard shells, broken wheels/axles preventing rolling, or snapped structural handles.",
-  "",
-  "Output Format",
-  "",
-  "Provide your analysis in a clear, scannable format using the following structure, based only on the damage-evidence photo(s):",
-  "",
-  "🔍 Image Quality Assessment",
-  "",
-  "[State if the damage-evidence photo's quality is sufficient. If not, trigger the Error Message from Step 1 and stop.]",
-  "",
-  "🛡️ Authenticity Verdict",
-  "",
-  "• Status: [Authenticity Verdict]",
-  "• Confidence Score: [0-100%]",
-  "• Technical Observations: [Briefly list any anomalies or verification markers found, such as lighting inconsistencies or organic textures.]",
-  "",
-  "🧳 Damage Assessment Report (Only if Authentic)",
-  "",
-  "• Classification: [Major Damage / Minor Damage]",
-  "• Affected Components: [e.g., Wheels, Main Shell, Zipper, Handle]",
-  "• Detailed Findings: [Provide a brief, objective explanation of what visual evidence led to this classification.]",
+  "## OUTPUT",
+  "Return ONLY valid JSON, no text before or after:",
+  "{",
+  "  \"damage\": {",
+  "    \"classification\": \"minor | major | uncertain\",",
+  "    \"confidence\": \"high | medium | low\",",
+  "    \"damaged_parts\": [{\"part\": \"\", \"damage_type\": \"\", \"severity\": \"low | medium | high\"}],",
+  "    \"reasoning\": \"\",",
+  "    \"possible_hidden_damage\": []",
+  "  },",
+  "  \"authenticity\": {",
+  "    \"rating\": \"likely_genuine | suspicious | likely_manipulated_or_ai | cannot_determine\",",
+  "    \"confidence\": \"high | medium | low\",",
+  "    \"anomalies\": [{\"category\": \"\", \"location\": \"\", \"description\": \"\"}],",
+  "    \"supporting_signs\": [],",
+  "    \"limitations\": []",
+  "  },",
+  "  \"additional_photos_needed\": [],",
+  "  \"verification_steps\": [\"e.g. request original file with metadata\", \"reverse image search\", \"on-site inspection\"],",
+  "  \"recommended_action\": \"process | request_more_evidence | escalate_to_human | hold\",",
+  "  \"summary\": \"2 to 3 plain sentences covering the damage level, the authenticity risk, and the next step. State that this is a visual estimate, not a professional inspection.\"",
+  "}",
 ].join("\n");
 
 function doGet(e) {
@@ -119,8 +137,8 @@ function handleAnalyse(payload) {
 
   // Image order is fixed by the frontend's upload form: 0 = Baggage Tag,
   // 1 = Brand Label, 2 = Close-up of Damage, 3+ = optional additional
-  // damage photos. Label each one by role so the prompt's "Image Roles"
-  // section can tell the AI which photos to actually analyze.
+  // damage photos. Label each one by role so the prompt's scoping
+  // paragraph can tell the AI which photos to actually analyze.
   const IMAGE_LABELS = ["Baggage Tag", "Brand Label", "Close-up of Damage"];
   const images = payload.images || [];
   const content = [];
@@ -138,7 +156,7 @@ function handleAnalyse(payload) {
   });
   content.push({
     type: "text",
-    text: "Assess this baggage per your instructions, using only the photo(s) labeled as damage evidence.",
+    text: "Assess this baggage per your instructions, using only the photo(s) labeled as damage evidence. Return ONLY the JSON object specified in OUTPUT.",
   });
 
   const response = UrlFetchApp.fetch("https://api.anthropic.com/v1/messages", {
@@ -151,9 +169,8 @@ function handleAnalyse(payload) {
     payload: JSON.stringify({
       model: CLAUDE_MODEL,
       // Opus 5.5 spends some of its budget on internal reasoning before the
-      // visible report; 500 was too low and the whole call was getting cut
-      // off mid-thinking (stop_reason "max_tokens") with zero text ever
-      // produced. Leave real headroom for both.
+      // visible report; leave real headroom for both the reasoning and the
+      // (now fairly large) JSON output.
       max_tokens: 4096,
       system: DAMAGE_SYSTEM_PROMPT,
       messages: [{ role: "user", content: content }],
@@ -169,9 +186,7 @@ function handleAnalyse(payload) {
   }
 
   // Don't assume the text reply is content[0] — some responses include a
-  // non-text block (e.g. thinking) before the actual text block, which
-  // silently produced an empty string here and made every real call look
-  // like a parse failure ("flagged", authenticity "Unknown").
+  // non-text block (e.g. thinking) before the actual text block.
   const blocks = body.content || [];
   const textBlock = blocks.find((block) => block.type === "text");
   const text = textBlock ? textBlock.text : "";
@@ -187,48 +202,62 @@ function handleAnalyse(payload) {
   return jsonResponse(result);
 }
 
-// Parses the free-text report the system prompt specifies (not JSON) into
-// a structured result the frontend can branch on. Claude frequently bolds
-// field labels/values with markdown ("**Status:** Authentic") even though
-// the prompt's example uses plain text — strip markdown emphasis first so
-// a leading "**" never breaks the "starts with authentic" check below.
+// The new prompt requires the model to return ONLY a JSON object (see the
+// OUTPUT section of DAMAGE_SYSTEM_PROMPT) instead of the old free-text
+// report, so this is a direct JSON.parse rather than regex extraction.
+// Maps the model's richer {damage, authenticity, recommended_action, ...}
+// shape onto the simple {status | flagged | error} shape the frontend
+// branches on:
+//   recommended_action "process" + damage major/minor -> status
+//   recommended_action "request_more_evidence"         -> error (retry)
+//   anything else (escalate_to_human, hold, or an               -> flagged
+//   unparseable/uncertain result)                                  (manual review)
 function parseAssessment(text) {
-  const clean = text.replace(/\*+/g, "");
+  let data;
+  try {
+    const cleaned = text
+      .trim()
+      .replace(/^```json\s*/i, "")
+      .replace(/^```\s*/, "")
+      .replace(/```\s*$/, "");
+    data = JSON.parse(cleaned);
+  } catch (err) {
+    return { error: "Could not parse the AI's JSON response." };
+  }
 
-  if (/❌/.test(clean) || /not clear enough/i.test(clean)) {
-    const match = clean.match(/Error:?\s*([^\n]*)/i);
+  const damage = data.damage || {};
+  const authenticity = data.authenticity || {};
+  const action = data.recommended_action;
+  const summary = data.summary || "";
+
+  if (action === "process" && (damage.classification === "major" || damage.classification === "minor")) {
     return {
-      error: (match && match[1].trim()) || "The uploaded photos were not clear enough for assessment.",
+      status: damage.classification,
+      damageConfidence: damage.confidence || "",
+      authenticity: authenticity.rating || "",
+      confidence: authenticity.confidence || "",
+      summary: summary,
     };
   }
 
-  const statusMatch = clean.match(/Status:\s*([^\n•]+)/i);
-  const authenticity = statusMatch ? statusMatch[1].trim() : "Unknown";
-
-  const confidenceMatch = clean.match(/Confidence Score:\s*([^\n•]+)/i);
-  const confidence = confidenceMatch ? confidenceMatch[1].trim() : "";
-
-  if (!/^authentic/i.test(authenticity)) {
+  if (action === "request_more_evidence") {
     return {
-      flagged: true,
-      authenticity: authenticity,
-      confidence: confidence,
+      error:
+        summary ||
+        "The AI needs clearer or additional photos to assess this damage reliably.",
     };
   }
 
-  const classificationMatch = clean.match(/Classification:\s*([^\n•]+)/i);
-  const classificationRaw = classificationMatch ? classificationMatch[1].trim() : "";
-  const status = /major/i.test(classificationRaw)
-    ? "major"
-    : /minor/i.test(classificationRaw)
-      ? "minor"
-      : null;
-
-  if (!status) {
-    return { error: "Could not determine a damage classification from the AI response." };
-  }
-
-  return { status: status, authenticity: authenticity, confidence: confidence };
+  // escalate_to_human, hold, an "uncertain" damage classification, or any
+  // other combination the rules above didn't match — route to manual
+  // review rather than guessing.
+  return {
+    flagged: true,
+    damageConfidence: damage.confidence || "",
+    authenticity: authenticity.rating || "Unknown",
+    confidence: authenticity.confidence || "",
+    summary: summary,
+  };
 }
 
 function logDamageAssessment(payload, result, rawText) {
@@ -237,10 +266,12 @@ function logDamageAssessment(payload, result, rawText) {
     new Date(),
     payload.bookingRef || "",
     payload.bagId || "",
-    result.error ? "Error" : result.flagged ? "Flagged" : result.status || "",
+    result.error ? "error" : result.flagged ? "flagged" : result.status || "",
+    result.status || "",
+    result.damageConfidence || "",
     result.authenticity || "",
     result.confidence || "",
-    result.error || "",
+    result.summary || result.error || "",
     rawText,
   ]);
 }
@@ -251,9 +282,9 @@ function getOrCreateDamageLogSheet() {
   if (!sheet) {
     sheet = spreadsheet.insertSheet(DAMAGE_LOG_SHEET);
     sheet.appendRow([
-      "Timestamp", "Booking Reference", "Bag ID", "Result",
-      "Authenticity Status", "Confidence Score", "Error Message",
-      "Full AI Report",
+      "Timestamp", "Booking Reference", "Bag ID", "Recommended Action",
+      "Damage Classification", "Damage Confidence", "Authenticity Rating",
+      "Authenticity Confidence", "Summary", "Full AI Report",
     ]);
   }
   return sheet;
