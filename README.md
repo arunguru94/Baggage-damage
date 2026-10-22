@@ -100,30 +100,32 @@ The Web App exposes one URL with two verbs:
 
 `handleAnalyse()` sends three labeled photos to Claude per bag — `Baggage Tag`, `Brand Label`, `Close-up of Damage` (plus any further `Additional damage evidence #N`). The system prompt (`DAMAGE_SYSTEM_PROMPT`) explicitly restricts analysis to the damage photo(s); the tag and label photos are for identification only.
 
-Claude is asked to return **only** a JSON object:
+Claude is asked to return **only** a JSON object, with each object's fields listed in a specific order — evidence, then reasoning, then the verdict that follows from it:
 
 ```json
 {
   "damage": {
-    "classification": "minor | major | uncertain",
-    "confidence": "high | medium | low",
     "damaged_parts": [{ "part": "", "damage_type": "", "severity": "" }],
+    "possible_hidden_damage": [],
     "reasoning": "",
-    "possible_hidden_damage": []
+    "classification": "minor | major | uncertain",
+    "confidence": "high | medium | low"
   },
   "authenticity": {
-    "rating": "likely_genuine | suspicious | likely_manipulated_or_ai | cannot_determine",
-    "confidence": "high | medium | low",
     "anomalies": [{ "category": "", "location": "", "description": "" }],
     "supporting_signs": [],
-    "limitations": []
+    "limitations": [],
+    "rating": "likely_genuine | suspicious | likely_manipulated_or_ai | cannot_determine",
+    "confidence": "high | medium | low"
   },
   "additional_photos_needed": [],
   "verification_steps": [],
-  "recommended_action": "process | request_more_evidence | escalate_to_human | hold",
-  "summary": ""
+  "summary": "",
+  "recommended_action": "process | request_more_evidence | escalate_to_human | hold"
 }
 ```
+
+The field order is deliberate, not cosmetic: Claude generates JSON fields in the order the schema lists them, so listing `damaged_parts`/`anomalies` and `reasoning` before `classification`/`rating` forces the model to lay out evidence and reasoning before it commits to a verdict, instead of deciding first and rationalizing afterward. The prompt's `OUTPUT` section spells this out explicitly. This costs nothing extra (no additional photos or tokens) and is the main lever for improving reasoning quality and reducing snap-judgment misclassification.
 
 `reasoning` and `summary` are plain natural-language text, not further nested JSON — the JSON wrapper exists only to keep the machine-parseable fields (`classification`, `confidence`, `rating`, `recommended_action`) separate from the AI's free-text explanation.
 
@@ -142,7 +144,8 @@ Every analysis call — success, flagged, parse failure, or API error — is app
 | Column | Contents |
 |---|---|
 | Timestamp, Booking Reference, Bag ID | Claim identifiers |
-| Recommended Action, Damage Classification, Damage Confidence | Outcome summary |
+| Result | `error`, `flagged`, `major`, or `minor` — the frontend-facing outcome, not Claude's literal `recommended_action` value |
+| Damage Classification, Damage Confidence | Outcome summary |
 | Authenticity Rating, Authenticity Confidence | Authenticity summary |
 | Summary | Claude's one-paragraph summary |
 | Full AI Report | A human-readable plain-text report (`formatReportAsText()`), not raw JSON |
