@@ -340,7 +340,7 @@ function getOrCreateDamageLogSheet() {
   if (!sheet) {
     sheet = spreadsheet.insertSheet(DAMAGE_LOG_SHEET);
     sheet.appendRow([
-      "Timestamp", "Booking Reference", "Bag ID", "Recommended Action",
+      "Timestamp", "Booking Reference", "Bag ID", "Result",
       "Damage Classification", "Damage Confidence", "Authenticity Rating",
       "Authenticity Confidence", "Summary", "Full AI Report",
     ]);
