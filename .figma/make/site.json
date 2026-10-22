@@ -1,0 +1,10 @@
+{
+  "description": "Streamline baggage damage reporting and compensation processing for travelers, allowing easy claim submissions and choice of compensation methods.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

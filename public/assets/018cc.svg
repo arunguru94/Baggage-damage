@@ -1,0 +1,14 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="_Avatar / Baby Pill">
+<g clip-path="url(#clip0_0_1542)">
+<path id="Oval" d="M6 12C9.31371 12 12 9.31371 12 6C12 2.68629 9.31371 0 6 0C2.68629 0 0 2.68629 0 6C0 9.31371 2.68629 12 6 12Z" fill="#0C8839"/>
+<path id="Path" d="M3 6.46554L4.82216 7.89627C5.02792 8.05889 5.32599 8.02688 5.49254 7.82429L8.64195 4" stroke-linecap="round" stroke="white"/>
+</g>
+<path d="M6 0.5C9.03757 0.5 11.5 2.96243 11.5 6C11.5 9.03757 9.03757 11.5 6 11.5C2.96243 11.5 0.5 9.03757 0.5 6C0.5 2.96243 2.96243 0.5 6 0.5Z" stroke="white"/>
+</g>
+<defs>
+<clipPath id="clip0_0_1542">
+<path d="M0 6C0 2.68629 2.68629 0 6 0V0C9.31371 0 12 2.68629 12 6V6C12 9.31371 9.31371 12 6 12V12C2.68629 12 0 9.31371 0 6V6Z" fill="white"/>
+</clipPath>
+</defs>
+</svg>
