@@ -152,19 +152,24 @@ function handleAnalyse(payload) {
 }
 
 // Parses the free-text report the system prompt specifies (not JSON) into
-// a structured result the frontend can branch on.
+// a structured result the frontend can branch on. Claude frequently bolds
+// field labels/values with markdown ("**Status:** Authentic") even though
+// the prompt's example uses plain text — strip markdown emphasis first so
+// a leading "**" never breaks the "starts with authentic" check below.
 function parseAssessment(text) {
-  if (/❌/.test(text) || /not clear enough/i.test(text)) {
-    const match = text.match(/Error:?\s*([^\n]*)/i);
+  const clean = text.replace(/\*+/g, "");
+
+  if (/❌/.test(clean) || /not clear enough/i.test(clean)) {
+    const match = clean.match(/Error:?\s*([^\n]*)/i);
     return {
       error: (match && match[1].trim()) || "The uploaded photos were not clear enough for assessment.",
     };
   }
 
-  const statusMatch = text.match(/Status:\s*([^\n•]+)/i);
+  const statusMatch = clean.match(/Status:\s*([^\n•]+)/i);
   const authenticity = statusMatch ? statusMatch[1].trim() : "Unknown";
 
-  const confidenceMatch = text.match(/Confidence Score:\s*([^\n•]+)/i);
+  const confidenceMatch = clean.match(/Confidence Score:\s*([^\n•]+)/i);
   const confidence = confidenceMatch ? confidenceMatch[1].trim() : "";
 
   if (!/^authentic/i.test(authenticity)) {
@@ -175,7 +180,7 @@ function parseAssessment(text) {
     };
   }
 
-  const classificationMatch = text.match(/Classification:\s*([^\n•]+)/i);
+  const classificationMatch = clean.match(/Classification:\s*([^\n•]+)/i);
   const classificationRaw = classificationMatch ? classificationMatch[1].trim() : "";
   const status = /major/i.test(classificationRaw)
     ? "major"
