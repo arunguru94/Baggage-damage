@@ -145,7 +145,20 @@ function handleAnalyse(payload) {
     return jsonResponse(result);
   }
 
-  const text = (body.content && body.content[0] && body.content[0].text) || "";
+  // Don't assume the text reply is content[0] — some responses include a
+  // non-text block (e.g. thinking) before the actual text block, which
+  // silently produced an empty string here and made every real call look
+  // like a parse failure ("flagged", authenticity "Unknown").
+  const blocks = body.content || [];
+  const textBlock = blocks.find((block) => block.type === "text");
+  const text = textBlock ? textBlock.text : "";
+
+  if (!text) {
+    const result = { error: "AI returned no text content" };
+    logDamageAssessment(payload, result, JSON.stringify(body));
+    return jsonResponse(result);
+  }
+
   const result = parseAssessment(text);
   logDamageAssessment(payload, result, text);
   return jsonResponse(result);
