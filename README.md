@@ -125,6 +125,8 @@ Claude is asked to return **only** a JSON object:
 }
 ```
 
+`reasoning` and `summary` are plain natural-language text, not further nested JSON — the JSON wrapper exists only to keep the machine-parseable fields (`classification`, `confidence`, `rating`, `recommended_action`) separate from the AI's free-text explanation.
+
 `mapAssessment()` collapses that into the simple shape the frontend branches on:
 
 - `recommended_action: "process"` + damage `major`/`minor` → `{ status: "major" | "minor", ... }` → an automatic offer.
